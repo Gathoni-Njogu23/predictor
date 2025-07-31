@@ -1,15 +1,12 @@
 from flask import Flask, request
+import os
+import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-import os
 
 load_dotenv()  # Load variables from .env
-
-API_BASE_URL = os.getenv("API_BASE_URL")
-
-requests.get(f"{API_BASE_URL}/some-endpoint")
-
 app = Flask(__name__)
+API_BASE_URL = os.getenv("API_BASE_URL")
 
 # --- Full commodity and market lists ---
 all_commodities = [
@@ -29,6 +26,17 @@ mock_prices = {
     ("maize", "wakulima", "consumer", "2025-08-30"): 3000
 }
 
+@app.route('/')
+def home():
+    # Test API connection (optional)
+    if API_BASE_URL:
+        try:
+            response = requests.get(f"{API_BASE_URL}/some-endpoint")
+            return response.text
+        except Exception as e:
+            return f"API request failed: {e}"
+    return "MaliYaLeo is running."
+
 @app.route("/ussd", methods=["POST"])
 def ussd():
     session_id = request.form.get("sessionId", "")
@@ -39,11 +47,9 @@ def ussd():
     level = len(text_array)
     response = ""
 
-    # Step 0: Ask if user is farmer or consumer
     if level == 0:
         response = "CON Welcome to MaliYaLeo 📊\n1. Farmer\n2. Consumer"
 
-    # Step 1: Paginate commodities
     elif level == 1 or (level == 2 and text_array[1] in ["N", "B"]):
         page = 0
         if level == 2:
@@ -67,10 +73,8 @@ def ussd():
         if page > 0:
             response += f"{len(items)+2}. Back\n"
 
-        # Add page number to keep state
         response += f"\n(Commodities Page {page+1})"
 
-    # Step 2: Handle commodity selection
     elif level == 2 or level == 3:
         page = 0
         if text_array[1] in ["N", "B"]:
@@ -86,19 +90,15 @@ def ussd():
         except IndexError:
             return "END Invalid commodity selection."
 
-        # Save role + commodity
         role = "farmer" if text_array[0] == "1" else "consumer"
         full_text = f"{text_array[0]}*{commodity}"
 
-        # Move to market pagination
         response = market_menu(full_text, 0)
-    
-    # Step 3: Handle market selection + time
+
     elif len(text_array) >= 2 and text_array[1] in all_commodities:
         commodity = text_array[1]
         role = "farmer" if text_array[0] == "1" else "consumer"
 
-        # If on market menu
         if len(text_array) == 3 and text_array[2] in ["N", "B"]:
             current_page = int(text_array[3]) if len(text_array) > 3 else 0
             new_page = current_page + 1 if text_array[2] == "N" else current_page - 1
@@ -115,7 +115,6 @@ def ussd():
             full_text = f"{text_array[0]}*{commodity}*{market}"
             response = "CON Choose time range:\n1. Tomorrow\n2. In 3 days\n3. In a week\n4. In a month"
 
-    # Step 4: Final prediction
     elif len(text_array) == 4:
         role = "farmer" if text_array[0] == "1" else "consumer"
         commodity = text_array[1]
