@@ -1,27 +1,27 @@
-# === FILE: app.py ===
 from flask import Flask, request
 import requests
 import os
 from dotenv import load_dotenv
 from utils.sessions_manager import get_session_level, update_session_level
 
-# Loading environment variables from .env
+# Load environment variables from .env
 load_dotenv()
 
 app = Flask(__name__)
 
-# Loading FastAPI prediction endpoint from environment
+# Load prediction API URL
 PREDICTION_API_URL = os.getenv("PREDICTION_API_URL")
+print("Using Prediction API URL:", PREDICTION_API_URL)
 
 @app.route("/ussd", methods=["POST"])
-def ussd_callback():# ussd in checking the user sessions,the user themselves and the text
+def ussd_callback():
     session_id = request.form.get("sessionId")
     phone_number = request.form.get("phoneNumber")
     text = request.form.get("text", "")
 
     inputs = text.strip().split("*") if text else []
     level = get_session_level(session_id)
-#this is the levels that users follows during the ussd process
+
     if level == 0:
         response = "CON Welcome to MaliYaLeo\n1. Farmer (Wholesale)\n2. Consumer (Retail)"
         update_session_level(session_id, 1)
@@ -53,7 +53,6 @@ def ussd_callback():# ussd in checking the user sessions,the user themselves and
         date = inputs[-1]
         session_data = update_session_level(session_id, 7, {"date": date})
 
-        # Preparing prediction payload that will be sent to the main.py to calculate the predictions
         payload = {
             "user_type": session_data["user_type"],
             "location": session_data["location"],
@@ -64,15 +63,24 @@ def ussd_callback():# ussd in checking the user sessions,the user themselves and
         }
 
         try:
-            # Send request to prediction API
-            prediction = requests.post(PREDICTION_API_URL, json=payload).json()
-            price = prediction.get("predicted_price", "N/A")
-            response = (
-                f"END {payload['commodity'].capitalize()} price at "
-                f"{payload['market']}, {payload['location']} on {payload['date']} "
-                f"({payload['forecast_type']}) is Ksh {price}"
-            )
+            print("Sending prediction request with payload:", payload)
+            prediction_response = requests.post(PREDICTION_API_URL, json=payload)
+            print("Response Status:", prediction_response.status_code)
+            print("Response Text:", prediction_response.text)
+
+            if prediction_response.status_code == 200:
+                prediction = prediction_response.json()
+                price = prediction.get("predicted_price", "N/A")
+                response = (
+                    f"END {payload['commodity'].capitalize()} price at "
+                    f"{payload['market']}, {payload['location']} on {payload['date']} "
+                    f"({payload['forecast_type']}) is Ksh {price}"
+                )
+            else:
+                response = "END Sorry, prediction service error. Please try again later."
+
         except Exception as e:
+            print("Prediction Error:", str(e))
             response = "END Sorry, we could not get your prediction. Please try again."
 
     else:
