@@ -14,8 +14,8 @@ app = FastAPI()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Load models and encoders
-xgb_wholesale = joblib.load("model/xgb_model_wholesale.pkl")
-xgb_retail = joblib.load("model/xgb_model_retail.pkl")
+xgb_wholesale = joblib.load("model/xgb_wholesale.pkl")
+xgb_retail = joblib.load("model/xgb_retail.pkl")
 ohe_encoder = joblib.load("model/ohe_encoder.pkl")
 columns = joblib.load("model/columns.pkl")
 
