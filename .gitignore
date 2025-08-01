@@ -10,8 +10,6 @@ env/
 # Ignore environment variables and secrets
 .env
 
-# Ignore model files (
-model/*.pkl
 
 # Ignore VSCode config (optional)
 .vscode/
