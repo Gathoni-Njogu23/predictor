@@ -1,9 +1,24 @@
-.env
+# Ignore Python cache and bytecode
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
-*.pyd
-env/
+
+# Ignore virtual environments
 venv/
-.idea/
-*.sqlite3
+env/
+
+# Ignore environment variables and secrets
+.env
+
+# Ignore model files (
+model/*.pkl
+
+# Ignore VSCode config (optional)
+.vscode/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
