@@ -3,7 +3,7 @@ from flask import Flask, request
 import requests
 import os
 from dotenv import load_dotenv
-from utils.session_manager import get_session_level, update_session_level
+from utils.sessions_manager import get_session_level, update_session_level
 
 # Loading environment variables from .env
 load_dotenv()
