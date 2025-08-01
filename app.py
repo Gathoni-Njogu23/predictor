@@ -1,92 +1,142 @@
-from flask import Flask, request
-import requests
+from flask import Flask,request
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime, timedelta
 import os
+import requests
 from dotenv import load_dotenv
-from utils.sessions_manager import get_session_level, update_session_level
 
-# Load environment variables from .env
+# Load env vars from .env if running locally
 load_dotenv()
 
 app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
-# Load prediction API URL
 PREDICTION_API_URL = os.getenv("PREDICTION_API_URL")
-print("Using Prediction API URL:", PREDICTION_API_URL)
 
-@app.route("/ussd", methods=["POST"])
-def ussd_callback():
-    session_id = request.form.get("sessionId")
-    phone_number = request.form.get("phoneNumber")
-    text = request.form.get("text", "")
 
-    inputs = text.strip().split("*") if text else []
-    level = get_session_level(session_id)
+class Session(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.String(100), unique=True)
+    phone = db.Column(db.String(20))
+    user_type = db.Column(db.String(20))  # 'wholesale' or 'retail'
+    county = db.Column(db.String(50))
+    market = db.Column(db.String(50))
+    date = db.Column(db.String(20))
 
-    if level == 0:
-        response = "CON Welcome to MaliYaLeo\n1. Farmer (Wholesale)\n2. Consumer (Retail)"
-        update_session_level(session_id, 1)
 
-    elif level == 1:
-        user_type = "farmer" if inputs[-1] == "1" else "consumer"
-        update_session_level(session_id, 2, {"user_type": user_type})
-        response = "CON Enter your county (e.g. Nairobi)"
+@app.route('/ussd', methods=['POST'])
+def ussd():
+    session_id = request.values.get("sessionId")
+    phone = request.values.get("phoneNumber")
+    text = request.values.get("text", "")
 
-    elif level == 2:
-        update_session_level(session_id, 3, {"location": inputs[-1]})
-        response = "CON Enter market (e.g. Wakulima)"
+    user_input = text.split("*")
+    step = len(user_input)
 
-    elif level == 3:
-        update_session_level(session_id, 4, {"market": inputs[-1]})
-        response = "CON Enter commodity (e.g. maize)"
+    session = Session.query.filter_by(session_id=session_id).first()
+    if not session:
+        session = Session(session_id=session_id, phone=phone)
+        db.session.add(session)
+        db.session.commit()
 
-    elif level == 4:
-        update_session_level(session_id, 5, {"commodity": inputs[-1]})
-        response = "CON Choose forecast type:\n1. Daily\n2. Weekly\n3. Monthly"
+    if step == 0 or text == "":
+        return (
+            "CON Welcome to Price Prediction Assistant\n"
+            "Are you a:\n1. Farmer (Wholesale)\n2. Consumer (Retail)"
+        )
 
-    elif level == 5:
-        forecast_map = {"1": "daily", "2": "weekly", "3": "monthly"}
-        forecast_type = forecast_map.get(inputs[-1], "daily")
-        update_session_level(session_id, 6, {"forecast_type": forecast_type})
-        response = "CON Enter date (YYYY-MM-DD)"
+    elif step == 1:
+        choice = user_input[0]
+        if choice == "1":
+            session.user_type = "wholesale"
+        elif choice == "2":
+            session.user_type = "retail"
+        else:
+            return "END Invalid selection. Try again."
+        db.session.commit()
+        return "CON Enter your COUNTY:"
 
-    elif level == 6:
-        date = inputs[-1]
-        session_data = update_session_level(session_id, 7, {"date": date})
-
-        payload = {
-            "user_type": session_data["user_type"],
-            "location": session_data["location"],
-            "market": session_data["market"],
-            "commodity": session_data["commodity"],
-            "forecast_type": session_data["forecast_type"],
-            "date": session_data["date"]
-        }
+    elif step == 2:
+        session.county = user_input[1].strip()
+        db.session.commit()
 
         try:
-            print("Sending prediction request with payload:", payload)
-            prediction_response = requests.post(PREDICTION_API_URL, json=payload)
-            print("Response Status:", prediction_response.status_code)
-            print("Response Text:", prediction_response.text)
+            res = requests.get(f"{PREDICTION_API_URL}/markets?county={session.county}")
+            if res.status_code == 200:
+                markets = res.json().get("markets", [])
+                if not markets:
+                    return "END No markets found for this county."
 
-            if prediction_response.status_code == 200:
-                prediction = prediction_response.json()
-                price = prediction.get("predicted_price", "N/A")
-                response = (
-                    f"END {payload['commodity'].capitalize()} price at "
-                    f"{payload['market']}, {payload['location']} on {payload['date']} "
-                    f"({payload['forecast_type']}) is Ksh {price}"
+                # Save market list temporarily in app memory (not DB)
+                market_list = "\n".join(f"{i+1}. {m}" for i, m in enumerate(markets))
+                session.market_list = ",".join(markets)  # optional
+                session.temp_markets = markets
+                db.session.commit()
+
+                return f"CON Select a market:\n{market_list}"
+            else:
+                return "END Failed to load market list."
+        except Exception:
+            return "END Error connecting to prediction service."
+
+    elif step == 3:
+        try:
+            market_index = int(user_input[2]) - 1
+            res = requests.get(f"{PREDICTION_API_URL}/markets?county={session.county}")
+            markets = res.json().get("markets", [])
+
+            if 0 <= market_index < len(markets):
+                session.market = markets[market_index]
+                db.session.commit()
+                return "CON Enter forecast date (YYYY-MM-DD):"
+            else:
+                return "END Invalid market selection."
+        except Exception:
+            return "END Error retrieving market."
+
+    elif step == 4:
+        try:
+            date_str = user_input[3].strip()
+            forecast_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            today = datetime.today().date()
+
+            if forecast_date < today or forecast_date > today + timedelta(days=7):
+                return "END Date must be within 7 days from today."
+
+            session.date = date_str
+            db.session.commit()
+
+            # Call your ML prediction API
+            payload = {
+                "county": session.county,
+                "market": session.market,
+                "date": session.date,
+                "type": session.user_type
+            }
+
+            res = requests.post(f"{PREDICTION_API_URL}/predict", json=payload)
+            if res.status_code == 200:
+                price = res.json().get("prediction", "N/A")
+                label = "Wholesale" if session.user_type == "wholesale" else "Retail"
+                return (
+                    f"END{label} price for {session.market} on {session.date}:\n"
+                    f"KES {price}"
                 )
             else:
-                response = "END Sorry, prediction service error. Please try again later."
+                return "END Prediction service failed."
 
-        except Exception as e:
-            print("Prediction Error:", str(e))
-            response = "END Sorry, we could not get your prediction. Please try again."
+        except ValueError:
+            return "END Invalid date format. Use YYYY-MM-DD."
+        except Exception:
+            return "END Error connecting to prediction API."
 
     else:
-        response = "END Invalid session"
+        return "END Invalid input. Please dial again."
 
-    return response
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
