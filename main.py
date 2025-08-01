@@ -17,7 +17,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 xgb_wholesale = joblib.load("model/xgb_wholesale.pkl")
 xgb_retail = joblib.load("model/xgb_retail.pkl")
 ohe_encoder = joblib.load("model/ohe_encoder.pkl")
-columns = joblib.load("model/columns.pkl")
+columns = joblib.load("model/feature_columns.pkl")
 
 class PredictionRequest(BaseModel):
     user_type: str
