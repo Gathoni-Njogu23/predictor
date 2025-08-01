@@ -1,31 +1,4 @@
-# Core web & server dependencies
-Flask==3.0.3
+flask==3.0.3
 gunicorn==23.0.0
+africastalking==0.6.0
 python-dotenv==1.0.1
-
-# USSD/API utilities
-requests==2.31.0  # Or whatever recent version you're using
-
-# Machine Learning & Data Processing
-scikit-learn==0.24.2  # Match with your installed version
-pandas==1.3.5
-numpy==1.23.5
-xgboost==1.3.3
-statsmodels==0.12.2
-joblib==1.0.1
-
-# Optional: Prophet for time series (if used)
-fbprophet==0.7.1  # Only include if you're using it
-
-# Data visualization (optional)
-matplotlib==3.3.2
-seaborn==0.11.0
-
-# Serialization / database (if used)
-SQLAlchemy==1.3.20  # If using a DB
-PyYAML==5.3.1       # If configs are in YAML
-
-# For Jupyter Notebook usage (optional for development)
-notebook
-ipykernel
-ipywidgets
