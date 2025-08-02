@@ -24,28 +24,32 @@ def ussd_callback():
         response = "CON Enter county (e.g. Nairobi):"
 
     elif level == 2:
-        county = text_array[1].title()
+        county = text_array[1].strip().title()
 
         try:
-            market_res = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
-            market_list = market_res.json().get("markets", [])
-        except:
-            return "END Error fetching markets from API."
+            res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
+            if res.status_code != 200:
+                return "END Failed to fetch markets."
 
-        if not market_list:
-            return "END No markets found for that county."
+            market_list = res.json().get("markets", [])
+            if not market_list:
+                return "END No markets found for that county."
+
+        except Exception as e:
+            print("Market fetch error:", e)
+            return "END Error fetching markets."
 
         markets_str = "\n".join([f"{i+1}. {m}" for i, m in enumerate(market_list)])
         response = f"CON Select market in {county}:\n{markets_str}"
 
     elif level == 3:
         commodity = text_array[0]
-        county = text_array[1].title()
+        county = text_array[1].strip().title()
         market_choice = text_array[2]
 
         try:
-            market_res = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
-            market_list = market_res.json().get("markets", [])
+            res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
+            market_list = res.json().get("markets", [])
             market = market_list[int(market_choice) - 1]
         except:
             return "END Invalid market choice."
@@ -54,13 +58,13 @@ def ussd_callback():
 
     elif level == 4:
         commodity = text_array[0]
-        county = text_array[1].title()
+        county = text_array[1].strip().title()
         market_choice = text_array[2]
         date = text_array[3]
 
         try:
-            market_res = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
-            market_list = market_res.json().get("markets", [])
+            res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
+            market_list = res.json().get("markets", [])
             market = market_list[int(market_choice) - 1]
         except:
             return "END Invalid market selection."
