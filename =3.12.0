@@ -1,0 +1,10 @@
+Requirement already satisfied: protobuf in c:\users\user\anaconda3\envs\learn-env\lib\site-packages (3.11.2)
+Collecting protobuf
+  Downloading protobuf-5.29.5-cp38-cp38-win_amd64.whl.metadata (592 bytes)
+Downloading protobuf-5.29.5-cp38-cp38-win_amd64.whl (434 kB)
+Installing collected packages: protobuf
+  Attempting uninstall: protobuf
+    Found existing installation: protobuf 3.11.2
+    Uninstalling protobuf-3.11.2:
+      Successfully uninstalled protobuf-3.11.2
+Successfully installed protobuf-5.29.5
