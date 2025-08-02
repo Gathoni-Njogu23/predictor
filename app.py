@@ -101,5 +101,12 @@ def ussd_callback():
 
     return response
 
-if __name__ == "__main__":
-    app.run(port=5000)
+if __name__ == '__main__':
+    import os
+    os.environ['FLASK_ENV'] = 'development'  # 🔥 force development mode
+    app.run(debug=True)
+
+
+#if __name__ == "__main__":
+    #app.run(port=5000)
+
