@@ -31,34 +31,21 @@ def ussd_callback():
 
     elif level == 3:
         county = text_array[2].strip().title()
-
         try:
-            res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
+            res = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
             if res.status_code != 200:
                 return "END Failed to fetch markets."
-
-            market_list = res.json().get("markets", [])
-            if not market_list:
+            markets = res.json().get("markets", [])
+            if not markets:
                 return "END No markets found for that county."
 
+            market_list = "\n".join([f"{i+1}. {m}" for i, m in enumerate(markets)])
+            response = f"CON Select market:\n{market_list}"
         except Exception as e:
             print("Market fetch error:", e)
-            return "END Error fetching markets."
-
-        markets_str = "\n".join([f"{i+1}. {m}" for i, m in enumerate(market_list)])
-        response = f"CON Select market in {county}:\n{markets_str}"
+            return "END Error retrieving markets."
 
     elif level == 4:
-        market_choice = text_array[3]
-        county = text_array[2].strip().title()
-
-        try:
-            res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
-            market_list = res.json().get("markets", [])
-            market = market_list[int(market_choice) - 1]
-        except:
-            return "END Invalid market choice."
-
         response = "CON Enter date (YYYY-MM-DD):"
 
     elif level == 5:
@@ -69,11 +56,13 @@ def ussd_callback():
         date = text_array[4]
 
         try:
-            res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
-            market_list = res.json().get("markets", [])
-            market = market_list[int(market_choice) - 1]
+            res = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
+            if res.status_code != 200:
+                return "END Failed to fetch markets."
+            markets = res.json().get("markets", [])
+            market = markets[int(market_choice) - 1]
         except:
-            return "END Invalid market selection."
+            return "END Invalid market selection or error retrieving markets."
 
         payload = {
             "commodity": commodity,
