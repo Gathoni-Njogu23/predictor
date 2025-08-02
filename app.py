@@ -1,128 +1,141 @@
 from flask import Flask, request
-from datetime import datetime, timedelta
-import os
 import requests
-from dotenv import load_dotenv
-import logging
+import os
 
-# Load .env variables
-load_dotenv()
-
-# Logging
-logging.basicConfig(level=logging.INFO)
-
-# Flask app
 app = Flask(__name__)
 
-# ML Prediction API
-PREDICTION_API_URL = os.getenv("PREDICTION_API_URL", "").rstrip("/")
-
-# In-memory sessions (dictionary instead of DB)
-sessions = {}
+PREDICTION_API_URL = os.environ.get("PREDICTION_API_URL", "https://7a9b2ad38296.ngrok-free.app")
 
 @app.route('/ussd', methods=['POST'])
 def ussd():
-    session_id = request.values.get("sessionId")
-    phone = request.values.get("phoneNumber")
+    session_id = request.values.get("sessionId", "")
+    phone = request.values.get("phoneNumber", "")
     text = request.values.get("text", "")
 
-    user_input = text.split("*")
-    step = len(user_input)
+    inputs = text.split("*")
+    step = len(inputs)
 
-    # Use in-memory session
-    if session_id not in sessions:
-        sessions[session_id] = {"phone": phone}
+    try:
+        if text == "":
+            response = "CON Welcome to MaliYaLeo!\n1. Farmer (Wholesale)\n2. Consumer (Retail)"
 
-    session = sessions[session_id]
-
-    if step == 0 or text == "":
-        return (
-            "CON Welcome to Price Prediction Assistant\n"
-            "Are you a:\n1. Farmer (Wholesale)\n2. Consumer (Retail)"
-        )
-
-    elif step == 1:
-        choice = user_input[0]
-        if choice == "1":
-            session["user_type"] = "wholesale"
-        elif choice == "2":
-            session["user_type"] = "retail"
-        else:
-            return "END Invalid selection. Try again."
-        return "CON Enter your COUNTY:"
-
-    elif step == 2:
-        session["county"] = user_input[1].strip()
-
-        try:
-            res = requests.get(f"{PREDICTION_API_URL}/markets?county={session['county']}")
-            if res.status_code == 200:
-                markets = res.json().get("markets", [])
-                if not markets:
-                    return "END No markets found for this county."
-
-                session["markets"] = markets
-                market_list = "\n".join(f"{i+1}. {m}" for i, m in enumerate(markets))
-                return f"CON Select a market:\n{market_list}"
+        elif step == 1:
+            # Get commodities from API
+            role = "wholesale" if inputs[0] == "1" else "retail"
+            r = requests.get(f"{PREDICTION_API_URL}/commodities?user_type={role}")
+            if r.status_code == 200:
+                commodities = r.json().get("commodities", [])
+                if not commodities:
+                    response = "END No commodities found."
+                else:
+                    response = "CON Choose commodity:\n" + "\n".join(
+                        [f"{i+1}. {c}" for i, c in enumerate(commodities)]
+                    )
             else:
-                return "END Failed to load market list."
-        except Exception as e:
-            app.logger.error(f"Market error: {e}")
-            return "END Error connecting to prediction service."
+                response = "END Could not fetch commodities."
 
-    elif step == 3:
-        try:
-            market_index = int(user_input[2]) - 1
-            markets = session.get("markets", [])
+        elif step == 2:
+            role = "wholesale" if inputs[0] == "1" else "retail"
+            commodity_index = int(inputs[1]) - 1
+            # Fetch commodities to map index to name
+            r = requests.get(f"{PREDICTION_API_URL}/commodities?user_type={role}")
+            commodities = r.json().get("commodities", [])
+            if commodity_index >= len(commodities):
+                return "END Invalid commodity selected.", 200, {'Content-Type': 'text/plain'}
+            commodity = commodities[commodity_index]
 
-            if 0 <= market_index < len(markets):
-                session["market"] = markets[market_index]
-                return "CON Enter forecast date (YYYY-MM-DD):"
-            else:
-                return "END Invalid market selection."
-        except Exception as e:
-            app.logger.error(f"Market select error: {e}")
-            return "END Error retrieving market."
+            r = requests.get(f"{PREDICTION_API_URL}/counties?commodity={commodity}")
+            counties = r.json().get("counties", [])
+            response = "CON Choose county:\n" + "\n".join(
+                [f"{i+1}. {c}" for i, c in enumerate(counties)]
+            )
 
-    elif step == 4:
-        try:
-            date_str = user_input[3].strip()
-            forecast_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            today = datetime.today().date()
+        elif step == 3:
+            role = "wholesale" if inputs[0] == "1" else "retail"
+            commodity_index = int(inputs[1]) - 1
+            county_index = int(inputs[2]) - 1
 
-            if forecast_date < today or forecast_date > today + timedelta(days=7):
-                return "END Date must be within 7 days from today."
+            # Fetch commodity + county
+            r1 = requests.get(f"{PREDICTION_API_URL}/commodities?user_type={role}")
+            commodity = r1.json().get("commodities", [])[commodity_index]
 
-            session["date"] = date_str
+            r2 = requests.get(f"{PREDICTION_API_URL}/counties?commodity={commodity}")
+            county = r2.json().get("counties", [])[county_index]
 
-            # Call ML API
+            # Get markets
+            r3 = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
+            markets = r3.json().get("markets", [])
+            response = "CON Choose market:\n" + "\n".join(
+                [f"{i+1}. {m}" for i, m in enumerate(markets)]
+            )
+
+        elif step == 4:
+            role = "wholesale" if inputs[0] == "1" else "retail"
+            commodity_index = int(inputs[1]) - 1
+            county_index = int(inputs[2]) - 1
+            market_index = int(inputs[3]) - 1
+
+            r1 = requests.get(f"{PREDICTION_API_URL}/commodities?user_type={role}")
+            commodity = r1.json().get("commodities", [])[commodity_index]
+
+            r2 = requests.get(f"{PREDICTION_API_URL}/counties?commodity={commodity}")
+            county = r2.json().get("counties", [])[county_index]
+
+            r3 = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
+            market = r3.json().get("markets", [])[market_index]
+
+            # Get forecast dates
+            r4 = requests.get(f"{PREDICTION_API_URL}/forecast_dates")
+            dates = r4.json().get("dates", [])
+            response = "CON Choose forecast date:\n" + "\n".join(
+                [f"{i+1}. {d}" for i, d in enumerate(dates)]
+            )
+
+        elif step == 5:
+            role = "wholesale" if inputs[0] == "1" else "retail"
+            commodity_index = int(inputs[1]) - 1
+            county_index = int(inputs[2]) - 1
+            market_index = int(inputs[3]) - 1
+            date_index = int(inputs[4]) - 1
+
+            r1 = requests.get(f"{PREDICTION_API_URL}/commodities?user_type={role}")
+            commodity = r1.json().get("commodities", [])[commodity_index]
+
+            r2 = requests.get(f"{PREDICTION_API_URL}/counties?commodity={commodity}")
+            county = r2.json().get("counties", [])[county_index]
+
+            r3 = requests.get(f"{PREDICTION_API_URL}/markets?county={county}")
+            market = r3.json().get("markets", [])[market_index]
+
+            r4 = requests.get(f"{PREDICTION_API_URL}/forecast_dates")
+            forecast_date = r4.json().get("dates", [])[date_index]
+
+            # Call final prediction API
             payload = {
-                "county": session["county"],
-                "market": session["market"],
-                "date": session["date"],
-                "type": session["user_type"]
+                "user_type": role,
+                "commodity": commodity,
+                "county": county,
+                "market": market,
+                "forecast_date": forecast_date
             }
-
-            app.logger.info("Sending payload to ML API: %s", payload)
-
-            res = requests.post(f"{PREDICTION_API_URL}/predict", json=payload)
-            if res.status_code == 200:
-                price = res.json().get("prediction", "N/A")
-                label = "Wholesale" if session["user_type"] == "wholesale" else "Retail"
-                return (
-                    f"END {label} price for {session['market']} on {session['date']}:\n"
-                    f"KES {price}"
+            r = requests.post(f"{PREDICTION_API_URL}/predict", json=payload)
+            if r.status_code == 200:
+                price = r.json().get("predicted_price", "N/A")
+                response = (
+                    f"END {role.title()} price for {commodity} in {market} "
+                    f"on {forecast_date} is Ksh {price}"
                 )
             else:
-                return "END Prediction service failed."
-        except ValueError:
-            return "END Invalid date format. Use YYYY-MM-DD."
-        except Exception as e:
-            app.logger.error(f"Prediction error: {e}")
-            return "END Error connecting to prediction API."
+                response = "END Could not retrieve prediction."
 
-    else:
-        return "END Invalid input. Please dial again."
+        else:
+            response = "END Invalid input. Please try again."
 
-if __name__ == "__main__":
-    app.run(debug=True)
+    except Exception as e:
+        print("USSD error:", e)
+        response = "END Something went wrong. Try again."
+
+    return response, 200, {'Content-Type': 'text/plain'}
+
+if __name__ == '__main__':
+    app.run()
