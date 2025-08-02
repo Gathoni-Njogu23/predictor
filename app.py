@@ -18,13 +18,19 @@ def ussd_callback():
 
     if text == "":
         response = "CON Welcome to MajiBora Price Forecast\n"
-        response += "Enter commodity (e.g. Maize):"
+        response += "Are you a:\n1. Farmer\n2. Consumer"
 
     elif level == 1:
-        response = "CON Enter county (e.g. Nairobi):"
+        user_type = text_array[0]
+        if user_type not in ["1", "2"]:
+            return "END Invalid selection. Choose 1 or 2."
+        response = "CON Enter commodity (e.g. Maize):"
 
     elif level == 2:
-        county = text_array[1].strip().title()
+        response = "CON Enter county (e.g. Nairobi):"
+
+    elif level == 3:
+        county = text_array[2].strip().title()
 
         try:
             res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
@@ -42,10 +48,9 @@ def ussd_callback():
         markets_str = "\n".join([f"{i+1}. {m}" for i, m in enumerate(market_list)])
         response = f"CON Select market in {county}:\n{markets_str}"
 
-    elif level == 3:
-        commodity = text_array[0]
-        county = text_array[1].strip().title()
-        market_choice = text_array[2]
+    elif level == 4:
+        market_choice = text_array[3]
+        county = text_array[2].strip().title()
 
         try:
             res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
@@ -56,11 +61,12 @@ def ussd_callback():
 
         response = "CON Enter date (YYYY-MM-DD):"
 
-    elif level == 4:
-        commodity = text_array[0]
-        county = text_array[1].strip().title()
-        market_choice = text_array[2]
-        date = text_array[3]
+    elif level == 5:
+        user_type = text_array[0]
+        commodity = text_array[1].strip().title()
+        county = text_array[2].strip().title()
+        market_choice = text_array[3]
+        date = text_array[4]
 
         try:
             res = requests.get(f"{PREDICTION_API_URL}/markets", params={"county": county})
@@ -92,7 +98,9 @@ def ussd_callback():
             wholesale = price.get("Wholesale", "N/A")
             retail = price.get("Retail", "N/A")
 
-            response = f"END {commodity} in {market}, {county}\n"
+            user_type_str = "Farmer" if user_type == "1" else "Consumer"
+
+            response = f"END {commodity} price forecast for a {user_type_str} in {market}, {county}:\n"
             response += f"Wholesale: KES {wholesale}\nRetail: KES {retail}"
 
         except Exception as e:
