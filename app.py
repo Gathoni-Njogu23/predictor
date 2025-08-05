@@ -1,10 +1,10 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import requests
 import os
 
 app = Flask(__name__)
 
-# Use updated deployed API URL
+# Use your deployed API endpoint
 PREDICTION_API_URL = os.getenv("PREDICTION_API_URL", "https://maliyaleo.onrender.com")
 
 @app.route("/ussd", methods=["POST"])
@@ -29,24 +29,20 @@ def ussd_callback():
         return "CON Enter county (e.g. Kiambu):"
 
     elif level == 3:
-        commodity = text_array[1].strip().title()
-        county = text_array[2].strip().title()
-
+        # Now ignore the county & commodity when fetching markets
         try:
-            res = requests.get(
-                f"{PREDICTION_API_URL}/markets",
-                params={"county": county, "commodity": commodity}
-            )
+            res = requests.get(f"{PREDICTION_API_URL}/markets")
 
             if res.status_code != 200:
                 return "END Failed to fetch markets."
 
             markets = res.json().get("markets", [])
-            if not markets:
-                return "END No markets found for that county and commodity."
 
-            # Show market list with numbers
-            market_list = "\n".join([f"{i+1}. {m}" for i, m in enumerate(markets)])
+            if not markets:
+                return "END No markets available."
+
+            # Limit markets to first 10 if too long (USSD has 160-char limit)
+            market_list = "\n".join([f"{i+1}. {m}" for i, m in enumerate(markets[:10])])
             return f"CON Select market:\n{market_list}"
 
         except Exception as e:
@@ -64,10 +60,8 @@ def ussd_callback():
         date = text_array[4]
 
         try:
-            res = requests.get(
-                f"{PREDICTION_API_URL}/markets",
-                params={"county": county, "commodity": commodity}
-            )
+            # Fetch all markets again
+            res = requests.get(f"{PREDICTION_API_URL}/markets")
             markets = res.json().get("markets", [])
 
             market_index = int(market_choice) - 1
@@ -82,8 +76,31 @@ def ussd_callback():
             print("Market selection error:", str(e))
             return "END Error selecting market."
 
+        # Make prediction request
         payload = {
             "commodity": commodity,
             "county": county,
             "market": market,
-            "d
+            "date": date,
+            "days": 7
+        }
+
+        try:
+            prediction_res = requests.post(
+                f"{PREDICTION_API_URL}/predict",
+                json=payload
+            )
+
+            if prediction_res.status_code == 200:
+                prediction = prediction_res.json()
+                return f"END Forecasted price for {commodity} at {market} on {date}:\n{prediction}"
+            else:
+                return "END Failed to fetch prediction."
+
+        except Exception as e:
+            print("Prediction error:", str(e))
+            return "END Prediction error occurred."
+
+    else:
+        return "END Invalid input. Start again."
+
