@@ -1,0 +1,5 @@
+curl -X POST https://maliyaleo.onrender.com/ussd \
+  -d "sessionId=debug06" \
+  -d "phoneNumber=254745161584" \
+  -d "text=1*1*Bomet*Bomet Market*Avocado*2025-08-04" \
+  -d "serviceCode=*384*41238#"

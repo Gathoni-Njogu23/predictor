@@ -4,8 +4,8 @@ import os
 
 app = Flask(__name__)
 
-# Set this to your real API base URL
-PREDICTION_API_URL = os.getenv("PREDICTION_API_URL", "https://7a9b2ad38296.ngrok-free.app")
+# Use updated deployed API URL
+PREDICTION_API_URL = os.getenv("PREDICTION_API_URL", "https://maliyaleo.onrender.com")
 
 @app.route("/ussd", methods=["POST"])
 def ussd_callback():
@@ -37,19 +37,20 @@ def ussd_callback():
                 f"{PREDICTION_API_URL}/markets",
                 params={"county": county, "commodity": commodity}
             )
+
             if res.status_code != 200:
-                print("Error fetching markets:", res.status_code, res.text)
                 return "END Failed to fetch markets."
 
             markets = res.json().get("markets", [])
             if not markets:
                 return "END No markets found for that county and commodity."
 
+            # Show market list with numbers
             market_list = "\n".join([f"{i+1}. {m}" for i, m in enumerate(markets)])
             return f"CON Select market:\n{market_list}"
 
         except Exception as e:
-            print("Exception fetching markets:", str(e))
+            print("ERROR fetching markets:", str(e))
             return "END Error retrieving markets."
 
     elif level == 4:
@@ -59,7 +60,7 @@ def ussd_callback():
         user_type = text_array[0]
         commodity = text_array[1].strip().title()
         county = text_array[2].strip().title()
-        market_index = int(text_array[3]) - 1
+        market_choice = text_array[3]
         date = text_array[4]
 
         try:
@@ -67,51 +68,22 @@ def ussd_callback():
                 f"{PREDICTION_API_URL}/markets",
                 params={"county": county, "commodity": commodity}
             )
-            if res.status_code != 200:
-                print("Error refetching markets:", res.status_code, res.text)
-                return "END Failed to fetch markets again."
-
             markets = res.json().get("markets", [])
+
+            market_index = int(market_choice) - 1
+            if market_index < 0 or market_index >= len(markets):
+                return "END Invalid market selection."
+
             market = markets[market_index]
+
+        except ValueError:
+            return "END Market selection must be a number."
         except Exception as e:
             print("Market selection error:", str(e))
-            return "END Invalid market selection."
+            return "END Error selecting market."
 
         payload = {
             "commodity": commodity,
             "county": county,
             "market": market,
-            "date": date,
-            "days": 7
-        }
-
-        try:
-            pred_res = requests.post(f"{PREDICTION_API_URL}/predict", json=payload)
-            if pred_res.status_code != 200:
-                print("Prediction fetch failed:", pred_res.status_code, pred_res.text)
-                return "END Failed to get prediction."
-
-            prices = pred_res.json().get("data", {}).get("Predicted_prices", [])
-            if not prices:
-                return "END No prediction data found."
-
-            price = prices[0]
-            wholesale = price.get("Wholesale", "N/A")
-            retail = price.get("Retail", "N/A")
-            user_str = "Farmer" if user_type == "1" else "Consumer"
-
-            return (
-                f"END {commodity} forecast for {user_str} in {market}, {county} on {date}:\n"
-                f"Wholesale: KES {wholesale}\nRetail: KES {retail}"
-            )
-
-        except Exception as e:
-            print("Prediction error:", str(e))
-            return "END Error fetching prediction."
-
-    else:
-        return "END Invalid input."
-
-if __name__ == "__main__":
-    os.environ['FLASK_ENV'] = 'development'
-    app.run(debug=True, port=5000)
+            "d
