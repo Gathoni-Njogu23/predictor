@@ -1,10 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import requests
 import os
 
 app = Flask(__name__)
 
-# Use your deployed API endpoint
+# Replace with your actual prediction API base URL
 PREDICTION_API_URL = os.getenv("PREDICTION_API_URL", "https://maliyaleo.onrender.com")
 
 @app.route("/ussd", methods=["POST"])
@@ -18,7 +18,7 @@ def ussd_callback():
     level = len(text_array)
 
     if text == "":
-        return "CON Welcome to MajiBora Price Forecast\n1. Farmer\n2. Consumer"
+        return "CON Welcome to MaliYaLeo \n1. Farmer\n2. Consumer"
 
     elif level == 1:
         if text_array[0] not in ["1", "2"]:
@@ -26,81 +26,48 @@ def ussd_callback():
         return "CON Enter commodity (e.g. Maize):"
 
     elif level == 2:
-        return "CON Enter county (e.g. Kiambu):"
+        return "CON Enter county (e.g. Kirinyaga):"
 
     elif level == 3:
-        # Now ignore the county & commodity when fetching markets
-        try:
-            res = requests.get(f"{PREDICTION_API_URL}/markets")
-
-            if res.status_code != 200:
-                return "END Failed to fetch markets."
-
-            markets = res.json().get("markets", [])
-
-            if not markets:
-                return "END No markets available."
-
-            # Limit markets to first 10 if too long (USSD has 160-char limit)
-            market_list = "\n".join([f"{i+1}. {m}" for i, m in enumerate(markets[:10])])
-            return f"CON Select market:\n{market_list}"
-
-        except Exception as e:
-            print("ERROR fetching markets:", str(e))
-            return "END Error retrieving markets."
+        return "CON Enter market (e.g. Kerugoya):"
 
     elif level == 4:
         return "CON Enter date (YYYY-MM-DD):"
 
     elif level == 5:
-        user_type = text_array[0]
-        commodity = text_array[1].strip().title()
-        county = text_array[2].strip().title()
-        market_choice = text_array[3]
-        date = text_array[4]
-
         try:
-            # Fetch all markets again
-            res = requests.get(f"{PREDICTION_API_URL}/markets")
-            markets = res.json().get("markets", [])
+            user_type = text_array[0]
+            commodity = text_array[1].strip().title()
+            county = text_array[2].strip().title()
+            market = text_array[3].strip().title()
+            date = text_array[4].strip()
 
-            market_index = int(market_choice) - 1
-            if market_index < 0 or market_index >= len(markets):
-                return "END Invalid market selection."
-
-            market = markets[market_index]
-
-        except ValueError:
-            return "END Market selection must be a number."
-        except Exception as e:
-            print("Market selection error:", str(e))
-            return "END Error selecting market."
-
-        # Make prediction request
-        payload = {
-            "commodity": commodity,
-            "county": county,
-            "market": market,
-            "date": date,
-            "days": 7
-        }
-
-        try:
-            prediction_res = requests.post(
+            # POST request to the /predict endpoint
+            response = requests.post(
                 f"{PREDICTION_API_URL}/predict",
-                json=payload
+                json={
+                    "commodity": commodity,
+                    "county": county,
+                    "market": market,
+                    "date": date,
+                    "days": 7
+                }
             )
 
-            if prediction_res.status_code == 200:
-                prediction = prediction_res.json()
-                return f"END Forecasted price for {commodity} at {market} on {date}:\n{prediction}"
+            if response.status_code == 200:
+                data = response.json()
+                prediction = data.get("predicted_price", "N/A")
+                return f"END Forecasted price for {commodity} in {market}, {county} on {date} is:\nKES {prediction:.2f}"
             else:
                 return "END Failed to fetch prediction."
 
         except Exception as e:
             print("Prediction error:", str(e))
-            return "END Prediction error occurred."
+            return "END  Error during prediction request."
 
     else:
-        return "END Invalid input. Start again."
+        return "END Invalid input. Please start again."
 
+
+if __name__ == "__main__":
+    app.run(port=10000, debug=True)
